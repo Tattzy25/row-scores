@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ArrowDownToLine, ChevronDown, CircleHelp, Columns3, Plus, Radio, Settings2, Trash2, Upload } from "lucide-react"
+import { ArrowDownToLine, ChevronDown, Columns3, Plus, Settings2, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 
 type Probability = { label: string; probability: number }
 export type ScoreEvent = {
@@ -27,7 +26,6 @@ type ScoreboardProps = {
   humanLabel?: string
   aiLabel?: string
   columns?: ScoreColumn[]
-  onRowsChange?: (rows: ScoreEvent[]) => void
   onColumnsChange?: (columns: ScoreColumn[]) => void
 }
 
@@ -61,20 +59,16 @@ export function Scoreboard({
   humanLabel: initialHumanLabel = "The Human",
   aiLabel: initialAiLabel = "The AI",
   columns: incomingColumns,
-  onRowsChange,
   onColumnsChange,
 }: ScoreboardProps) {
-  const [addedRows, setAddedRows] = useState<ScoreEvent[]>([])
   const [columnsState, setColumnsState] = useState(incomingColumns ?? INITIAL_COLUMNS)
   const [humanLabel, setHumanLabel] = useState(initialHumanLabel)
   const [aiLabel, setAiLabel] = useState(initialAiLabel)
-  const [jsonText, setJsonText] = useState("")
-  const [rowError, setRowError] = useState("")
   const [newKey, setNewKey] = useState("")
   const [newColumnLabel, setNewColumnLabel] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const rows = useMemo(() => [...incomingRows, ...addedRows], [incomingRows, addedRows])
+  const rows = incomingRows
   const columns = incomingColumns ?? columnsState
   const visibleColumns = columns.filter((column) => column.visible)
   const setColumns = (next: ScoreColumn[]) => {
@@ -95,35 +89,6 @@ export function Scoreboard({
     })
   }, [rows, humanLabel, aiLabel, initialHumanLabel, initialAiLabel])
 
-  const receiveRow = () => {
-    setRowError("")
-    try {
-      const parsed: unknown = JSON.parse(jsonText)
-      const parsedRows = Array.isArray(parsed) ? parsed : [parsed]
-      if (!parsedRows.length || parsedRows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
-        throw new Error("Enter a JSON object or an array of row objects.")
-      }
-      const normalized = parsedRows.map((row, index) => {
-        const item = row as Record<string, unknown>
-        const speaker = item.speaker && typeof item.speaker === "object" ? item.speaker as Record<string, unknown> : null
-        const score = item.brutality_score && typeof item.brutality_score === "object" ? item.brutality_score as Record<string, unknown> : null
-        if (!speaker || typeof speaker.label !== "string") throw new Error("Each row needs a speaker.label.")
-        return {
-          ...item,
-          id: String(item.id ?? `${Date.now()}-${index}`),
-          speaker: { ...speaker, id: String(speaker.id ?? "speaker"), label: speaker.label },
-          ...(score ? { brutality_score: { ...score, id: String(score.id ?? "score"), label: String(score.label ?? "0") } } : {}),
-        } as ScoreEvent
-      })
-      const next = [...addedRows, ...normalized]
-      setAddedRows(next)
-      onRowsChange?.([...incomingRows, ...next])
-      setJsonText("")
-    } catch (error) {
-      setRowError(error instanceof Error ? error.message : "Invalid JSON row.")
-    }
-  }
-
   const addColumn = () => {
     const key = newKey.trim().replace(/\s+/g, "_")
     const label = newColumnLabel.trim()
@@ -138,7 +103,6 @@ export function Scoreboard({
       <Card className="scoreboard-card">
         <CardHeader className="scoreboard-header">
           <div className="scoreboard-heading">
-            <div className="eyebrow"><span className="live-dot" /> Live score feed</div>
             <CardTitle>{title}</CardTitle>
             <CardDescription>Event-by-event scoring, probability and confidence — updated as rows arrive.</CardDescription>
           </div>
@@ -181,7 +145,7 @@ export function Scoreboard({
             {!rows.length && <p className="probability-empty">Probabilities will appear when the first scored row arrives.</p>}
           </section>
 
-          <div className="feed-toolbar"><div><div className="feed-title">Event feed <Badge variant="secondary">{rows.length}</Badge></div><p>New JSON rows roll into the totals automatically.</p></div><Badge className="connection-badge"><Radio data-icon="inline-start" /> Listening for rows</Badge></div>
+          <div className="feed-toolbar"><div className="feed-title">Event feed <Badge variant="secondary">{rows.length}</Badge></div></div>
           <div className="table-wrap"><Table>
             <TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column.key}>{column.label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{rows.map((row, index) => <TableRow key={row.id || index}>{visibleColumns.map((column) => {
@@ -194,13 +158,6 @@ export function Scoreboard({
               {!rows.length && <TableRow><TableCell colSpan={Math.max(1, visibleColumns.length)}><div className="empty-feed"><div className="empty-icon"><ArrowDownToLine /></div><strong>No score rows yet</strong><span>Your scoreboard starts at zero. Incoming opponent rows will appear here.</span></div></TableCell></TableRow>}
             </TableBody>
           </Table></div>
-          <section className="ingest-panel">
-            <div className="ingest-heading"><div className="ingest-icon"><Upload /></div><div><strong>Receive score rows</strong><p>Paste one event object or an array of event objects in the incoming JSON shape.</p></div><CircleHelp className="help-icon" aria-hidden="true" /></div>
-            <Textarea aria-label="Incoming score row JSON" placeholder={'{\n  "speaker": { "id": "speaker", "label": "The_Human", "confidence": 0.84, "probabilities": [...] },\n  "brutality_score": { "id": "brutality_score", "label": "1", "expectedScore": 2.19 }\n}'} value={jsonText} onChange={(event) => setJsonText(event.target.value)} className="json-input" />
-            {rowError && <p role="alert" className="row-error">{rowError}</p>}
-            <div className="ingest-footer"><span>Rows are parsed as received; absent score values count as zero.</span><Button onClick={receiveRow} disabled={!jsonText.trim()}><Upload data-icon="inline-start" /> Add incoming rows</Button></div>
-          </section>
-          <p className="embed-note">Designed to sit above or below your orb. Pass rows directly to <code>&lt;Scoreboard rows=&#123;events&#125; /&gt;</code> for live parent-driven updates.</p>
         </CardContent>
       </Card>
     </main>

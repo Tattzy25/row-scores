@@ -5,7 +5,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Live Head-to-Head Scoreboard',
   description: 'A customizable, real-time opponent scoreboard with event-level scores and probabilities.',
-  generator: 'v0.app',
+  generator: 'row-scores',
   icons: {
     icon: [
       {

@@ -35,7 +35,7 @@ const INITIAL_COLUMNS: ScoreColumn[] = [
   { key: "speaker", label: "Opponent", visible: true },
   { key: "brutality_score", label: "Score", visible: true },
   { key: "confidence", label: "Confidence", visible: true },
-  { key: "turn_notes", label: "Turn notes", visible: true },
+  { key: "turn_notes", label: "Transcripts", visible: true }
 ]
 
 function percent(value?: number) {
@@ -47,7 +47,7 @@ function valueFor(row: ScoreEvent, key: string): unknown {
   if (key === "speaker") return row.speaker?.label ?? "Unknown"
   if (key === "brutality_score") return row.brutality_score?.label ?? "—"
   if (key === "confidence") return percent(row.speaker?.confidence)
-  if (key === "turn_notes") return row.turn_notes ?? row.notes ?? "—"
+  if (key === "turn_notes") return row.transcript ?? row.turn_notes ?? row.notes ?? "—"
   const value = row[key]
   if (value && typeof value === "object") return JSON.stringify(value)
   return value ?? "—"
@@ -80,12 +80,12 @@ export function Scoreboard({
 
   const summaries = useMemo(() => {
     return [humanLabel, aiLabel].map((label) => {
-      const entries = rows.filter((row) => labelFor(row.speaker?.label ?? "") === label)
-      const total = entries.reduce((sum, row) => {
+      const scoredEntries = rows.filter((row) => labelFor(row.speaker?.label ?? "") === label && row.brutality_score?.label !== undefined)
+      const total = scoredEntries.reduce((sum, row) => {
         const score = Number(row.brutality_score?.label)
         return sum + (Number.isFinite(score) ? score : 0)
       }, 0)
-      return { label, total, count: entries.filter((row) => row.brutality_score?.label !== undefined).length, average: entries.length ? total / entries.length : 0 }
+      return { label, total, count: scoredEntries.length, average: scoredEntries.length ? total / scoredEntries.length : 0 }
     })
   }, [rows, humanLabel, aiLabel, initialHumanLabel, initialAiLabel])
 
@@ -135,14 +135,24 @@ export function Scoreboard({
             </article>)}
           </section>
 
-          <section className="probability-section" aria-label="Latest opponent probabilities">
-            <div className="section-label"><span>Latest probabilities</span><span>Per event</span></div>
+          <section className="probability-section" aria-label="Latest score probabilities by opponent">
+            <div className="section-label"><span>Latest score probabilities</span><span>Score outcome distribution · 0–5</span></div>
             <div className="probability-grid">{[humanLabel, aiLabel].map((label) => {
-              const latest = [...rows].reverse().find((row) => row.speaker?.label === label || labelFor(row.speaker?.label ?? "") === label)
-              const p = latest?.speaker?.probabilities?.find((item) => item.label === label || labelFor(item.label) === label)?.probability
-              return <div className="probability-item" key={label}><div className="probability-label"><span>{label}</span><strong>{percent(p)}</strong></div><div className="probability-track"><span style={{ width: `${Math.max(0, Math.min(100, (p ?? 0) * 100))}%` }} /></div></div>
+              const latest = [...rows].reverse().find((row) => labelFor(row.speaker?.label ?? "") === label && row.brutality_score?.probabilities?.length)
+              const probabilities = latest?.brutality_score?.probabilities ?? []
+              return <div className="probability-opponent" key={label}>
+                <div className="probability-opponent-label">{label}</div>
+                <div className="probability-outcomes">{Array.from({ length: 6 }, (_, index) => {
+                  const probability = probabilities.find((item) => Number(item.label) === index)?.probability
+                  return <div className="probability-outcome" key={index}>
+                    <span className="probability-score-label">{index}</span>
+                    <strong>{typeof probability === "number" ? probability.toFixed(2) : "—"}</strong>
+                    <span className="probability-meter"><span style={{ width: `${Math.max(0, Math.min(100, (probability ?? 0) * 100))}%` }} /></span>
+                  </div>
+                })}</div>
+              </div>
             })}</div>
-            {!rows.length && <p className="probability-empty">Probabilities will appear when the first scored row arrives.</p>}
+            {!rows.some((row) => row.brutality_score?.probabilities?.length) && <p className="probability-empty">Six score probabilities appear here when a scored event arrives for each opponent.</p>}
           </section>
 
           <div className="feed-toolbar"><div className="feed-title">Event feed <Badge variant="secondary">{rows.length}</Badge></div></div>
@@ -151,8 +161,8 @@ export function Scoreboard({
             <TableBody>{rows.map((row, index) => <TableRow key={row.id || index}>{visibleColumns.map((column) => {
               const value = valueFor(row, column.key)
               if (column.key === "speaker") return <TableCell key={column.key}><Badge variant={labelFor(row.speaker.label) === humanLabel ? "secondary" : "outline"} className={`speaker-chip ${labelFor(row.speaker.label) === aiLabel ? "ai-chip" : "human-chip"}`}>{labelFor(row.speaker.label)}</Badge></TableCell>
-              if (column.key === "brutality_score") return <TableCell className="score-cell" key={column.key}>{String(value)}</TableCell>
-              if (column.key === "confidence") return <TableCell key={column.key}><span className="confidence-value">{percent(row.brutality_score?.confidence ?? row.speaker.confidence)}</span></TableCell>
+              if (column.key === "brutality_score") return <TableCell className="score-cell" key={column.key}>{row.brutality_score?.label ?? ""}</TableCell>
+              if (column.key === "confidence") return <TableCell key={column.key}>{row.brutality_score ? <span className="confidence-value">{percent(row.brutality_score.confidence ?? row.speaker.confidence)}</span> : ""}</TableCell>
               return <TableCell key={column.key} className={column.key === "id" ? "event-id" : ""}>{String(value)}</TableCell>
             })}</TableRow>)}
               {!rows.length && <TableRow><TableCell colSpan={Math.max(1, visibleColumns.length)}><div className="empty-feed"><div className="empty-icon"><ArrowDownToLine /></div><strong>No score rows yet</strong><span>Your scoreboard starts at zero. Incoming opponent rows will appear here.</span></div></TableCell></TableRow>}

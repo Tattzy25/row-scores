@@ -57,6 +57,15 @@ const exampleRows: ScoreEvent[] = [
     },
     turn_notes: "AI example event row",
   },
+  {
+    id: "EVT-1003",
+    timestamp: "2026-11-14 23:01:38",
+    speaker: {
+      id: "speaker",
+      label: "The_Human",
+    },
+    transcript: "That was a good point. Let me explain what I meant before we continue.",
+  },
 ]
 
 export default function Page() {

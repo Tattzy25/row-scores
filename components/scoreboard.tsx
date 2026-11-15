@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ArrowDownToLine, ChevronDown, CircleHelp, Columns3, Plus, Radio, Settings2, Trash2, Upload } from "lucide-react"
+import { ArrowDownToLine, ChevronDown, Columns3, Plus, Settings2, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 
 type Probability = { label: string; probability: number }
 export type ScoreEvent = {
@@ -27,7 +26,6 @@ type ScoreboardProps = {
   humanLabel?: string
   aiLabel?: string
   columns?: ScoreColumn[]
-  onRowsChange?: (rows: ScoreEvent[]) => void
   onColumnsChange?: (columns: ScoreColumn[]) => void
 }
 
@@ -37,7 +35,7 @@ const INITIAL_COLUMNS: ScoreColumn[] = [
   { key: "speaker", label: "Opponent", visible: true },
   { key: "brutality_score", label: "Score", visible: true },
   { key: "confidence", label: "Confidence", visible: true },
-  { key: "turn_notes", label: "Turn notes", visible: true },
+  { key: "turn_notes", label: "Transcripts", visible: true }
 ]
 
 function percent(value?: number) {
@@ -49,7 +47,7 @@ function valueFor(row: ScoreEvent, key: string): unknown {
   if (key === "speaker") return row.speaker?.label ?? "Unknown"
   if (key === "brutality_score") return row.brutality_score?.label ?? "—"
   if (key === "confidence") return percent(row.speaker?.confidence)
-  if (key === "turn_notes") return row.turn_notes ?? row.notes ?? "—"
+  if (key === "turn_notes") return row.transcript ?? row.turn_notes ?? row.notes ?? "—"
   const value = row[key]
   if (value && typeof value === "object") return JSON.stringify(value)
   return value ?? "—"
@@ -61,20 +59,16 @@ export function Scoreboard({
   humanLabel: initialHumanLabel = "The Human",
   aiLabel: initialAiLabel = "The AI",
   columns: incomingColumns,
-  onRowsChange,
   onColumnsChange,
 }: ScoreboardProps) {
-  const [addedRows, setAddedRows] = useState<ScoreEvent[]>([])
   const [columnsState, setColumnsState] = useState(incomingColumns ?? INITIAL_COLUMNS)
   const [humanLabel, setHumanLabel] = useState(initialHumanLabel)
   const [aiLabel, setAiLabel] = useState(initialAiLabel)
-  const [jsonText, setJsonText] = useState("")
-  const [rowError, setRowError] = useState("")
   const [newKey, setNewKey] = useState("")
   const [newColumnLabel, setNewColumnLabel] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const rows = useMemo(() => [...incomingRows, ...addedRows], [incomingRows, addedRows])
+  const rows = incomingRows
   const columns = incomingColumns ?? columnsState
   const visibleColumns = columns.filter((column) => column.visible)
   const setColumns = (next: ScoreColumn[]) => {
@@ -86,43 +80,14 @@ export function Scoreboard({
 
   const summaries = useMemo(() => {
     return [humanLabel, aiLabel].map((label) => {
-      const entries = rows.filter((row) => labelFor(row.speaker?.label ?? "") === label)
-      const total = entries.reduce((sum, row) => {
+      const scoredEntries = rows.filter((row) => labelFor(row.speaker?.label ?? "") === label && row.brutality_score?.label !== undefined)
+      const total = scoredEntries.reduce((sum, row) => {
         const score = Number(row.brutality_score?.label)
         return sum + (Number.isFinite(score) ? score : 0)
       }, 0)
-      return { label, total, count: entries.filter((row) => row.brutality_score?.label !== undefined).length, average: entries.length ? total / entries.length : 0 }
+      return { label, total, count: scoredEntries.length, average: scoredEntries.length ? total / scoredEntries.length : 0 }
     })
   }, [rows, humanLabel, aiLabel, initialHumanLabel, initialAiLabel])
-
-  const receiveRow = () => {
-    setRowError("")
-    try {
-      const parsed: unknown = JSON.parse(jsonText)
-      const parsedRows = Array.isArray(parsed) ? parsed : [parsed]
-      if (!parsedRows.length || parsedRows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
-        throw new Error("Enter a JSON object or an array of row objects.")
-      }
-      const normalized = parsedRows.map((row, index) => {
-        const item = row as Record<string, unknown>
-        const speaker = item.speaker && typeof item.speaker === "object" ? item.speaker as Record<string, unknown> : null
-        const score = item.brutality_score && typeof item.brutality_score === "object" ? item.brutality_score as Record<string, unknown> : null
-        if (!speaker || typeof speaker.label !== "string") throw new Error("Each row needs a speaker.label.")
-        return {
-          ...item,
-          id: String(item.id ?? `${Date.now()}-${index}`),
-          speaker: { ...speaker, id: String(speaker.id ?? "speaker"), label: speaker.label },
-          ...(score ? { brutality_score: { ...score, id: String(score.id ?? "score"), label: String(score.label ?? "0") } } : {}),
-        } as ScoreEvent
-      })
-      const next = [...addedRows, ...normalized]
-      setAddedRows(next)
-      onRowsChange?.([...incomingRows, ...next])
-      setJsonText("")
-    } catch (error) {
-      setRowError(error instanceof Error ? error.message : "Invalid JSON row.")
-    }
-  }
 
   const addColumn = () => {
     const key = newKey.trim().replace(/\s+/g, "_")
@@ -138,7 +103,6 @@ export function Scoreboard({
       <Card className="scoreboard-card">
         <CardHeader className="scoreboard-header">
           <div className="scoreboard-heading">
-            <div className="eyebrow"><span className="live-dot" /> Live score feed</div>
             <CardTitle>{title}</CardTitle>
             <CardDescription>Event-by-event scoring, probability and confidence — updated as rows arrive.</CardDescription>
           </div>
@@ -171,36 +135,39 @@ export function Scoreboard({
             </article>)}
           </section>
 
-          <section className="probability-section" aria-label="Latest opponent probabilities">
-            <div className="section-label"><span>Latest probabilities</span><span>Per event</span></div>
+          <section className="probability-section" aria-label="Latest score probabilities by opponent">
+            <div className="section-label"><span>Latest score probabilities</span><span>Score outcome distribution · 0–5</span></div>
             <div className="probability-grid">{[humanLabel, aiLabel].map((label) => {
-              const latest = [...rows].reverse().find((row) => row.speaker?.label === label || labelFor(row.speaker?.label ?? "") === label)
-              const p = latest?.speaker?.probabilities?.find((item) => item.label === label || labelFor(item.label) === label)?.probability
-              return <div className="probability-item" key={label}><div className="probability-label"><span>{label}</span><strong>{percent(p)}</strong></div><div className="probability-track"><span style={{ width: `${Math.max(0, Math.min(100, (p ?? 0) * 100))}%` }} /></div></div>
+              const latest = [...rows].reverse().find((row) => labelFor(row.speaker?.label ?? "") === label && row.brutality_score?.probabilities?.length)
+              const probabilities = latest?.brutality_score?.probabilities ?? []
+              return <div className="probability-opponent" key={label}>
+                <div className="probability-opponent-label">{label}</div>
+                <div className="probability-outcomes">{Array.from({ length: 6 }, (_, index) => {
+                  const probability = probabilities.find((item) => Number(item.label) === index)?.probability
+                  return <div className="probability-outcome" key={index}>
+                    <span className="probability-score-label">{index}</span>
+                    <strong>{typeof probability === "number" ? probability.toFixed(2) : "—"}</strong>
+                    <span className="probability-meter"><span style={{ width: `${Math.max(0, Math.min(100, (probability ?? 0) * 100))}%` }} /></span>
+                  </div>
+                })}</div>
+              </div>
             })}</div>
-            {!rows.length && <p className="probability-empty">Probabilities will appear when the first scored row arrives.</p>}
+            {!rows.some((row) => row.brutality_score?.probabilities?.length) && <p className="probability-empty">Six score probabilities appear here when a scored event arrives for each opponent.</p>}
           </section>
 
-          <div className="feed-toolbar"><div><div className="feed-title">Event feed <Badge variant="secondary">{rows.length}</Badge></div><p>New JSON rows roll into the totals automatically.</p></div><Badge className="connection-badge"><Radio data-icon="inline-start" /> Listening for rows</Badge></div>
+          <div className="feed-toolbar"><div className="feed-title">Event feed <Badge variant="secondary">{rows.length}</Badge></div></div>
           <div className="table-wrap"><Table>
             <TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column.key}>{column.label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{rows.map((row, index) => <TableRow key={row.id || index}>{visibleColumns.map((column) => {
               const value = valueFor(row, column.key)
               if (column.key === "speaker") return <TableCell key={column.key}><Badge variant={labelFor(row.speaker.label) === humanLabel ? "secondary" : "outline"} className={`speaker-chip ${labelFor(row.speaker.label) === aiLabel ? "ai-chip" : "human-chip"}`}>{labelFor(row.speaker.label)}</Badge></TableCell>
-              if (column.key === "brutality_score") return <TableCell className="score-cell" key={column.key}>{String(value)}</TableCell>
-              if (column.key === "confidence") return <TableCell key={column.key}><span className="confidence-value">{percent(row.brutality_score?.confidence ?? row.speaker.confidence)}</span></TableCell>
+              if (column.key === "brutality_score") return <TableCell className="score-cell" key={column.key}>{row.brutality_score?.label ?? ""}</TableCell>
+              if (column.key === "confidence") return <TableCell key={column.key}>{row.brutality_score ? <span className="confidence-value">{percent(row.brutality_score.confidence ?? row.speaker.confidence)}</span> : ""}</TableCell>
               return <TableCell key={column.key} className={column.key === "id" ? "event-id" : ""}>{String(value)}</TableCell>
             })}</TableRow>)}
               {!rows.length && <TableRow><TableCell colSpan={Math.max(1, visibleColumns.length)}><div className="empty-feed"><div className="empty-icon"><ArrowDownToLine /></div><strong>No score rows yet</strong><span>Your scoreboard starts at zero. Incoming opponent rows will appear here.</span></div></TableCell></TableRow>}
             </TableBody>
           </Table></div>
-          <section className="ingest-panel">
-            <div className="ingest-heading"><div className="ingest-icon"><Upload /></div><div><strong>Receive score rows</strong><p>Paste one event object or an array of event objects in the incoming JSON shape.</p></div><CircleHelp className="help-icon" aria-hidden="true" /></div>
-            <Textarea aria-label="Incoming score row JSON" placeholder={'{\n  "speaker": { "id": "speaker", "label": "The_Human", "confidence": 0.84, "probabilities": [...] },\n  "brutality_score": { "id": "brutality_score", "label": "1", "expectedScore": 2.19 }\n}'} value={jsonText} onChange={(event) => setJsonText(event.target.value)} className="json-input" />
-            {rowError && <p role="alert" className="row-error">{rowError}</p>}
-            <div className="ingest-footer"><span>Rows are parsed as received; absent score values count as zero.</span><Button onClick={receiveRow} disabled={!jsonText.trim()}><Upload data-icon="inline-start" /> Add incoming rows</Button></div>
-          </section>
-          <p className="embed-note">Designed to sit above or below your orb. Pass rows directly to <code>&lt;Scoreboard rows=&#123;events&#125; /&gt;</code> for live parent-driven updates.</p>
         </CardContent>
       </Card>
     </main>

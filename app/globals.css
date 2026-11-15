@@ -115,6 +115,15 @@ button, input, textarea { font: inherit; }
 .probability-label strong { font-variant-numeric: tabular-nums; }
 .probability-track { height: 5px; margin-top: 8px; }
 .probability-item:nth-child(2) .probability-track span { background: oklch(0.7 0.15 290); }
+.probability-opponent { min-width: 0; }
+.probability-opponent-label { margin-bottom: 10px; font-size: 12px; font-weight: 650; }
+.probability-outcomes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.probability-outcome { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+.probability-score-label { color: var(--muted-foreground); font-size: 9px; }
+.probability-outcome strong { font-size: 11px; font-variant-numeric: tabular-nums; }
+.probability-meter { height: 4px; overflow: hidden; border-radius: 5px; background: oklch(0.28 0.01 260); }
+.probability-meter span { display: block; height: 100%; border-radius: inherit; background: oklch(0.84 0.2 125); }
+.probability-opponent:nth-child(2) .probability-meter span { background: oklch(0.7 0.15 290); }
 .probability-empty { margin: 13px 0 0; color: var(--muted-foreground); font-size: 11px; }
 .feed-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 1px; }
 .feed-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 650; }
